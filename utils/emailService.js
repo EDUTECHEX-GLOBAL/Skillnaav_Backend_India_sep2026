@@ -3,15 +3,15 @@
 const { transporter } = require("./mailer");
 
 /**
- * Send a branded payment confirmation email after successful PayPal capture.
+ * Send a branded payment confirmation email after successful Razorpay capture.
  *
  * @param {Object} opts
  * @param {string} opts.email            - Recipient email address
  * @param {string} opts.name             - Recipient display name
  * @param {string} opts.planType         - e.g. "Premium Basic"
  * @param {number} opts.amount           - e.g. 2.99
- * @param {string} opts.captureId        - PayPal capture transaction ID
- * @param {string} opts.orderId          - PayPal order ID
+ * @param {string} opts.captureId        - Razorpay capture transaction ID
+ * @param {string} opts.orderId          - Razorpay order ID
  * @param {Date}   opts.premiumExpiration - When the subscription expires
  * @param {string} [opts.invoiceUrl]      - Optional link to download the PDF invoice
  */
@@ -77,7 +77,7 @@ async function sendPaymentConfirmationEmail({
                     </tr>
                     <tr>
                       <td style="font-size:13px;color:#6b7280;padding-bottom:10px;">Amount paid</td>
-                      <td style="font-size:13px;color:#111827;font-weight:600;text-align:right;padding-bottom:10px;">$${amount.toFixed(2)} USD</td>
+                      <td style="font-size:13px;color:#111827;font-weight:600;text-align:right;padding-bottom:10px;">₹${amount.toFixed(2)} INR</td>
                     </tr>
                     <tr>
                       <td colspan="2" style="border-top:1px solid #e5e7eb;padding-top:10px;"></td>
@@ -159,9 +159,9 @@ async function sendPaymentConfirmationEmail({
  * @param {string} opts.internshipTitle    - Job/internship title
  * @param {string} opts.companyName        - Company name
  * @param {number} opts.amount             - Amount paid
- * @param {string} opts.currency           - Currency code e.g. "USD"
- * @param {string} opts.paypalPaymentId    - PayPal capture/payment ID
- * @param {string} opts.paypalOrderId      - PayPal order ID
+ * @param {string} opts.currency           - Currency code e.g. "INR"
+ * @param {string} opts.razorpayPaymentId    - Razorpay capture/payment ID
+ * @param {string} opts.razorpayOrderId      - Razorpay order ID
  * @param {string} [opts.startDate]        - Internship start date
  * @param {string} [opts.invoiceUrl]       - Optional link to download PDF invoice
  */
@@ -171,9 +171,9 @@ async function sendInternshipPaymentConfirmationEmail({
   internshipTitle,
   companyName,
   amount,
-  currency = "USD",
-  paypalPaymentId,
-  paypalOrderId,
+  currency = "INR",
+  razorpayPaymentId,
+  razorpayOrderId,
   startDate,
   offerId,
   invoiceUrl,
@@ -238,12 +238,12 @@ async function sendInternshipPaymentConfirmationEmail({
                       <td colspan="2" style="border-top:1px solid #e5e7eb;padding-top:10px;"></td>
                     </tr>
                     <tr>
-                      <td style="font-size:13px;color:#6b7280;padding-bottom:6px;">PayPal Payment ID</td>
-                      <td style="font-size:12px;color:#6b7280;text-align:right;font-family:monospace;padding-bottom:6px;">${paypalPaymentId || "—"}</td>
+                      <td style="font-size:13px;color:#6b7280;padding-bottom:6px;">Razorpay Payment ID</td>
+                      <td style="font-size:12px;color:#6b7280;text-align:right;font-family:monospace;padding-bottom:6px;">${razorpayPaymentId || "—"}</td>
                     </tr>
                     <tr>
                       <td style="font-size:13px;color:#6b7280;padding-bottom:6px;">Order ID</td>
-                      <td style="font-size:12px;color:#6b7280;text-align:right;font-family:monospace;padding-bottom:6px;">${paypalOrderId || "—"}</td>
+                      <td style="font-size:12px;color:#6b7280;text-align:right;font-family:monospace;padding-bottom:6px;">${razorpayOrderId || "—"}</td>
                     </tr>
                     <tr>
                       <td style="font-size:13px;color:#6b7280;">Internship Start Date</td>
@@ -309,8 +309,8 @@ async function sendInternshipPaymentConfirmationEmail({
  * @param {string} opts.planType           - Plan name e.g. "Standard Plan"
  * @param {number} opts.amount             - Amount paid
  * @param {number} opts.creditsAdded       - Number of student licenses
- * @param {string} opts.captureId          - PayPal capture/payment ID
- * @param {string} opts.orderId            - PayPal order ID
+ * @param {string} opts.captureId          - Razorpay capture/payment ID
+ * @param {string} opts.orderId            - Razorpay order ID
  * @param {string} [opts.invoiceUrl]       - Optional link to download PDF invoice
  */
 async function sendSchoolAdminPaymentConfirmationEmail({
@@ -368,7 +368,7 @@ async function sendSchoolAdminPaymentConfirmationEmail({
                     </tr>
                     <tr>
                       <td style="font-size:13px;color:#6b7280;padding-bottom:10px;">Amount paid</td>
-                      <td style="font-size:13px;color:#111827;font-weight:600;text-align:right;padding-bottom:10px;">$${Number(amount).toFixed(2)} USD</td>
+                      <td style="font-size:13px;color:#111827;font-weight:600;text-align:right;padding-bottom:10px;">₹${Number(amount).toFixed(2)} INR</td>
                     </tr>
                     <tr>
                       <td colspan="2" style="border-top:1px solid #e5e7eb;padding-top:10px;"></td>

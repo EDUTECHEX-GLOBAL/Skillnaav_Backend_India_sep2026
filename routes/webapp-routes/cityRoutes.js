@@ -5,7 +5,7 @@ const { searchCities } = require("../../services/geodb.service");
 
 const router = express.Router();
 
-// GET /api/cities?namePrefix=montr&countryIds=CA
+// GET /api/cities?namePrefix=mumb&countryIds=IN
 router.get("/", async (req, res) => {
   const { namePrefix, countryIds } = req.query;
 
@@ -16,7 +16,7 @@ router.get("/", async (req, res) => {
   try {
     const cities = await searchCities({
       query: namePrefix.trim(),
-      country: countryIds === "CA" ? "Canada" : "United States",
+      country: "India",
     });
 
     // Return in the same shape the frontend expects: { data: [...] }

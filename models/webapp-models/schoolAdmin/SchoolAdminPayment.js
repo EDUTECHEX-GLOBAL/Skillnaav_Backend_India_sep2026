@@ -23,7 +23,7 @@ const schoolAdminPaymentSchema = new mongoose.Schema(
     },
     currency: {
       type: String,
-      default: "USD",
+      default: "INR",
     },
     status: {
       type: String,
@@ -32,9 +32,9 @@ const schoolAdminPaymentSchema = new mongoose.Schema(
     },
     paymentMethod: {
       type: String,
-      default: "paypal",
+      default: "razorpay",
     },
-    rawPayPalResponse: {
+    rawRazorpayResponse: {
       type: Object,
     },
     invoiceId: {
