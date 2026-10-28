@@ -279,6 +279,35 @@ router.get("/:id", async (req, res) => {
   }
 });
 
+// ─── Input Validators for Job Title and Company Name ────────────────────────
+const validateJobTitleBackend = (title) => {
+  if (!title || typeof title !== "string" || !title.trim()) {
+    return "Job title is required.";
+  }
+  const trimmed = title.trim();
+  if (trimmed.length < 3) return "Job title must be at least 3 characters.";
+  if (trimmed.length > 100) return "Job title cannot exceed 100 characters.";
+  if (!/^[A-Za-z]/.test(trimmed)) return "Job title must start with a letter.";
+  if (!/^[A-Za-z][A-Za-z0-9\s.,'&/()\-+]*$/.test(trimmed)) {
+    return "Job title can only contain letters, numbers, spaces, and basic punctuation (&, ., ,, ', -, /, +, ()).";
+  }
+  return "";
+};
+
+const validateCompanyNameBackend = (name) => {
+  if (!name || typeof name !== "string" || !name.trim()) {
+    return "Company name is required.";
+  }
+  const trimmed = name.trim();
+  if (trimmed.length < 2) return "Company name must be at least 2 characters.";
+  if (trimmed.length > 100) return "Company name cannot exceed 100 characters.";
+  if (!/^[A-Za-z]/.test(trimmed)) return "Company name must start with a letter.";
+  if (!/^[A-Za-z][A-Za-z0-9\s.,'&/()\-]*$/.test(trimmed)) {
+    return "Company name can only contain letters, numbers, spaces, and basic punctuation (&, ., ,, ', -, /).";
+  }
+  return "";
+};
+
 // ─── POST create a new internship posting ────────────────────────────────────
 router.post("/", async (req, res) => {
   try {
@@ -293,6 +322,16 @@ router.post("/", async (req, res) => {
 
     const partner = await Partner.findById(partnerId);
     if (!partner) return res.status(404).json({ message: "Partner not found" });
+
+    const jobTitleErr = validateJobTitleBackend(jobTitle);
+    if (jobTitleErr) {
+      return res.status(400).json({ message: jobTitleErr });
+    }
+
+    const companyNameErr = validateCompanyNameBackend(companyName);
+    if (companyNameErr) {
+      return res.status(400).json({ message: companyNameErr });
+    }
 
     if (partner.planType === "Freemium") {
       if (internshipType === "PAID") {
@@ -318,16 +357,30 @@ router.post("/", async (req, res) => {
       ? location
       : [city, state, country].filter(Boolean).join(", ");
 
+    const sanitizeContactInfo = (ci) => {
+      if (!ci) return { name: "", email: "", phone: "" };
+      if (typeof ci === "string") return { name: ci.slice(0, 80), email: "", phone: "" };
+      return {
+        name: typeof ci.name === "string" ? ci.name.trim().slice(0, 80) : "",
+        email: typeof ci.email === "string" ? ci.email.trim().slice(0, 100) : "",
+        phone: typeof ci.phone === "string" ? ci.phone.trim().slice(0, 30) : "",
+      };
+    };
+
     const newInternship = new InternshipPosting({
-      jobTitle, companyName,
+      jobTitle: typeof jobTitle === "string" ? jobTitle.slice(0, 120) : jobTitle,
+      companyName: typeof companyName === "string" ? companyName.slice(0, 120) : companyName,
       location: composedLocation,
       country, state, city,
-      jobDescription, startDate, endDateOrDuration, duration,
+      jobDescription: typeof jobDescription === "string" ? jobDescription.slice(0, 5000) : jobDescription,
+      startDate, endDateOrDuration, duration,
       sector, internshipType,
       internshipMode: finalMode,
       classification,
       compensationDetails: finalComp,
-      qualifications, contactInfo, imgUrl, applicationOpen,
+      qualifications: Array.isArray(qualifications) ? qualifications.map((q) => String(q).slice(0, 60)) : qualifications,
+      contactInfo: sanitizeContactInfo(contactInfo),
+      imgUrl, applicationOpen,
       studentApplied: false,
       adminStatus: "pending",
       adminApproved: false,
@@ -373,14 +426,40 @@ router.put("/:id", async (req, res) => {
       $set.adminReviewed = false;
     }
 
-    if (jobTitle !== undefined) $set.jobTitle = jobTitle;
-    if (companyName !== undefined) $set.companyName = companyName;
-    if (jobDescription !== undefined) $set.jobDescription = jobDescription;
+    if (jobTitle !== undefined) {
+      const jobTitleErr = validateJobTitleBackend(jobTitle);
+      if (jobTitleErr) {
+        return res.status(400).json({ message: jobTitleErr });
+      }
+      $set.jobTitle = typeof jobTitle === "string" ? jobTitle.trim().slice(0, 100) : jobTitle;
+    }
+    if (companyName !== undefined) {
+      const companyNameErr = validateCompanyNameBackend(companyName);
+      if (companyNameErr) {
+        return res.status(400).json({ message: companyNameErr });
+      }
+      $set.companyName = typeof companyName === "string" ? companyName.trim().slice(0, 100) : companyName;
+    }
+    if (jobDescription !== undefined) $set.jobDescription = typeof jobDescription === "string" ? jobDescription.slice(0, 5000) : jobDescription;
     if (startDate !== undefined) $set.startDate = startDate;
     if (endDateOrDuration !== undefined) $set.endDateOrDuration = endDateOrDuration;
     if (duration !== undefined) $set.duration = duration;
-    if (qualifications !== undefined) $set.qualifications = qualifications;
-    if (contactInfo !== undefined) $set.contactInfo = contactInfo;
+    if (qualifications !== undefined) {
+      $set.qualifications = Array.isArray(qualifications) ? qualifications.map((q) => String(q).slice(0, 60)) : qualifications;
+    }
+    if (contactInfo !== undefined) {
+      if (!contactInfo) {
+        $set.contactInfo = { name: "", email: "", phone: "" };
+      } else if (typeof contactInfo === "string") {
+        $set.contactInfo = { name: contactInfo.slice(0, 80), email: "", phone: "" };
+      } else {
+        $set.contactInfo = {
+          name: typeof contactInfo.name === "string" ? contactInfo.name.trim().slice(0, 80) : "",
+          email: typeof contactInfo.email === "string" ? contactInfo.email.trim().slice(0, 100) : "",
+          phone: typeof contactInfo.phone === "string" ? contactInfo.phone.trim().slice(0, 30) : "",
+        };
+      }
+    }
     if (imgUrl !== undefined) $set.imgUrl = imgUrl;
     if (sector !== undefined) $set.sector = sector;
     if (classification !== undefined) $set.classification = classification;

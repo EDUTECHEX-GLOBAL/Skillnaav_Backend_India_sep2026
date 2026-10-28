@@ -28,8 +28,10 @@ app.use(express.urlencoded({ extended: true, limit: "15mb" }));
 const allowedOrigins = [
   "http://localhost:3000",
   "http://127.0.0.1:3000",
+  "http://b2b.localhost:3000",
   "http://localhost:5173",
   process.env.FRONTEND_BASE_URL,
+  process.env.FRONTEND_B2B_URL,
   process.env.FRONTEND_BASE_URL_2,
   process.env.FRONTEND_BASE_URL_3,
   process.env.FRONTEND_BASE_URL_4,
@@ -277,6 +279,20 @@ io.on("connection", (socket) => {
 
   socket.on("joinRoom", ({ internshipId } = {}) => {
     if (internshipId) socket.join(internshipId);
+  });
+
+  socket.on("typing", ({ internshipId, senderId } = {}) => {
+    if (internshipId) {
+      socket.to(`chat_${internshipId}`).emit("userTyping", { internshipId, senderId });
+      socket.to(String(internshipId)).emit("userTyping", { internshipId, senderId });
+    }
+  });
+
+  socket.on("stopTyping", ({ internshipId, senderId } = {}) => {
+    if (internshipId) {
+      socket.to(`chat_${internshipId}`).emit("userStopTyping", { internshipId, senderId });
+      socket.to(String(internshipId)).emit("userStopTyping", { internshipId, senderId });
+    }
   });
 
   socket.on("sendMessage", async (msg = {}) => {

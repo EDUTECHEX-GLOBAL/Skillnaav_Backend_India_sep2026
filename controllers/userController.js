@@ -10,7 +10,49 @@ const { OAuth2Client } = require("google-auth-library");
 const client = new OAuth2Client(process.env.GOOGLE_SIGNUP_CLIENT_ID);
 const Partnerwebapp = require("../models/webapp-models/partnerModel");
 const SchoolAdmin = require("../models/webapp-models/schoolAdmin/SchoolAdminModel");
+const { validateEmailBackend } = require("../utils/emailValidator");
 
+
+const POSTAL_CODE_PATTERNS = {
+  "United States": /^\d{5}(-\d{4})?$/,
+  US: /^\d{5}(-\d{4})?$/,
+  India: /^[1-9][0-9]{5}$/,
+  IN: /^[1-9][0-9]{5}$/,
+  Canada: /^[A-Za-z]\d[A-Za-z][ -]?\d[A-Za-z]\d$/,
+  CA: /^[A-Za-z]\d[A-Za-z][ -]?\d[A-Za-z]\d$/,
+  "United Kingdom": /^[A-Za-z]{1,2}\d[A-Za-z\d]? ?\d[A-Za-z]{2}$/,
+  GB: /^[A-Za-z]{1,2}\d[A-Za-z\d]? ?\d[A-Za-z]{2}$/,
+  Australia: /^\d{4}$/,
+  AU: /^\d{4}$/,
+};
+
+const validatePostalCode = (code, country = "") => {
+  if (!code || typeof code !== "string") return false;
+  const trimmed = code.trim();
+  if (!trimmed) return true;
+  const pattern = POSTAL_CODE_PATTERNS[country] || POSTAL_CODE_PATTERNS[country?.trim()];
+  if (pattern) {
+    return pattern.test(trimmed);
+  }
+  return /^[a-zA-Z0-9\s-]{3,10}$/.test(trimmed);
+};
+
+const getPostalCodeError = (country = "") => {
+  const c = country ? country.trim() : "";
+  if (c === "India" || c === "IN" || !c) return "Please enter a valid 6-digit Indian PIN Code (e.g., 500081).";
+  if (c === "United States" || c === "US") return "Please enter a valid 5-digit US ZIP Code (e.g., 75001 or 75001-1234).";
+  if (c === "Canada" || c === "CA") return "Please enter a valid Canadian Postal Code (e.g., K1A 0B1).";
+  if (c === "United Kingdom" || c === "GB") return "Please enter a valid UK Postcode (e.g., SW1A 1AA).";
+  if (c === "Australia" || c === "AU") return "Please enter a valid 4-digit Australian Postal Code (e.g., 2000).";
+  return "Please enter a valid PIN / Postal Code (6 digits for India or 3-10 numbers/letters).";
+};
+
+const validateCity = (city) => {
+  if (!city || typeof city !== "string") return false;
+  const trimmed = city.trim();
+  if (!trimmed) return true;
+  return /^[a-zA-Z\u00C0-\u024F\s.'\-]{2,60}$/.test(trimmed) && !/\d/.test(trimmed);
+};
 
 // helper: expire subscription if expiration date is in the past or now
 async function expireIfNeeded(user) {
@@ -62,6 +104,9 @@ const getUserProfile = asyncHandler(async (req, res) => {
     isPremium: user.isPremium,
     planType: user.planType,
     premiumExpiration: user.premiumExpiration,
+    schoolAdmin: user.schoolAdmin || null,
+    schoolName: user.schoolName || user.school || null,
+    isB2B: !!user.schoolAdmin,
   };
   res.json(userProfile);
 });
@@ -194,6 +239,40 @@ const registerUser = asyncHandler(async (req, res) => {
   const parsedInterests = cleanArray(interests);
   const parsedLocations = cleanArray(preferredLocations);
 
+  const urlRegex = /^(https?:\/\/)?([a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}(:\d+)?(\/[^\s]*)?$/i;
+  const linkedinRegex = /^(https?:\/\/)?((www|\w\w)\.)?linkedin\.com\/[^\s]+$/i;
+
+  let validatedLinkedin = "";
+  if (linkedin && String(linkedin).trim()) {
+    const lk = String(linkedin).trim();
+    if (!linkedinRegex.test(lk)) {
+      res.status(400);
+      throw new Error("Invalid LinkedIn profile link. Must be a valid LinkedIn URL (e.g., https://linkedin.com/in/username).");
+    }
+    validatedLinkedin = /^https?:\/\//i.test(lk) ? lk : `https://${lk}`;
+  }
+
+  let validatedPortfolio = "";
+  if (portfolio && String(portfolio).trim()) {
+    const pf = String(portfolio).trim();
+    if (!urlRegex.test(pf)) {
+      res.status(400);
+      throw new Error("Invalid portfolio link. Must be a valid URL (e.g., https://yourportfolio.com).");
+    }
+    validatedPortfolio = /^https?:\/\//i.test(pf) ? pf : `https://${pf}`;
+  }
+
+  if (city && !validateCity(city)) {
+    res.status(400);
+    throw new Error("City name cannot contain numbers. Please enter text only (e.g., Dallas, New York).");
+  }
+
+  const rawZip = postalCode || zip || "";
+  if (rawZip && !validatePostalCode(rawZip, country)) {
+    res.status(400);
+    throw new Error(getPostalCodeError(country));
+  }
+
   const user = await Userwebapp.create({
     name,
     email,
@@ -203,15 +282,15 @@ const registerUser = asyncHandler(async (req, res) => {
     educationLevel,
     fieldOfStudy,
     desiredField,
-    linkedin,
-    portfolio,
+    linkedin: validatedLinkedin,
+    portfolio: validatedPortfolio,
     skills: parsedSkills,
     interests: parsedInterests,
     preferredLocations: parsedLocations,
     state,
     country,
-    city,
-    postalCode: postalCode || zip || "",
+    city: city ? city.trim() : "",
+    postalCode: rawZip ? rawZip.trim() : "",
     address,
     profileImage: profilePicUrl,
     isGoogleUser: isGoogleSignup,
@@ -334,10 +413,71 @@ const updateUserProfile = asyncHandler(async (req, res) => {
     throw new Error("User not found.");
   }
 
+  const urlRegex = /^(https?:\/\/)?([a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}(:\d+)?(\/[^\s]*)?$/i;
+  const linkedinRegex = /^(https?:\/\/)?((www|\w\w)\.)?linkedin\.com\/[^\s]+$/i;
+
+  if (req.body.linkedin !== undefined) {
+    const lk = String(req.body.linkedin).trim();
+    if (lk) {
+      if (!linkedinRegex.test(lk)) {
+        res.status(400);
+        throw new Error("Invalid LinkedIn profile link. Must be a valid LinkedIn URL (e.g., https://linkedin.com/in/username).");
+      }
+      user.linkedin = /^https?:\/\//i.test(lk) ? lk : `https://${lk}`;
+    } else {
+      user.linkedin = "";
+    }
+  }
+
+  if (req.body.portfolio !== undefined) {
+    const pf = String(req.body.portfolio).trim();
+    if (pf) {
+      if (!urlRegex.test(pf)) {
+        res.status(400);
+        throw new Error("Invalid portfolio link. Must be a valid URL (e.g., https://yourportfolio.com).");
+      }
+      user.portfolio = /^https?:\/\//i.test(pf) ? pf : `https://${pf}`;
+    } else {
+      user.portfolio = "";
+    }
+  }
+
+  if (req.body.country !== undefined && req.body.country !== "") {
+    user.country = req.body.country;
+  }
+
+  if (req.body.city !== undefined) {
+    const cty = String(req.body.city).trim();
+    if (cty) {
+      if (!validateCity(cty)) {
+        res.status(400);
+        throw new Error("City name cannot contain numbers. Please enter text only (e.g., Dallas, New York).");
+      }
+      user.city = cty;
+    } else {
+      user.city = "";
+    }
+  }
+
+  const pCode = req.body.postalCode !== undefined ? req.body.postalCode : req.body.zip;
+  if (pCode !== undefined) {
+    const trimmedZip = String(pCode).trim();
+    if (trimmedZip) {
+      const activeCountry = req.body.country || user.country || "";
+      if (!validatePostalCode(trimmedZip, activeCountry)) {
+        res.status(400);
+        throw new Error(getPostalCodeError(activeCountry));
+      }
+      user.postalCode = trimmedZip;
+    } else {
+      user.postalCode = "";
+    }
+  }
+
   const fields = [
     "name", "email", "universityName", "educationLevel", "fieldOfStudy",
-    "desiredField", "linkedin", "portfolio", "financialStatus", "state",
-    "country", "city", "address", "currentGrade", "gradePercentage",
+    "desiredField", "financialStatus", "state",
+    "address", "currentGrade", "gradePercentage",
   ];
 
   fields.forEach((field) => {
@@ -348,10 +488,6 @@ const updateUserProfile = asyncHandler(async (req, res) => {
 
   if (req.body.dob) {
     user.dob = new Date(req.body.dob);
-  }
-
-  if (req.body.zip || req.body.postalCode) {
-    user.postalCode = req.body.zip || req.body.postalCode;
   }
 
   const arrayFields = ["skills", "interests", "preferredLocations"];
@@ -517,10 +653,10 @@ const getPremiumStatus = asyncHandler(async (req, res) => {
 // Send verification code for signup
 const sendSignupVerificationCode = asyncHandler(async (req, res) => {
   const { email } = req.body;
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!emailRegex.test(email)) {
+  const emailErr = validateEmailBackend(email);
+  if (emailErr) {
     res.status(400);
-    throw new Error("Invalid email format.");
+    throw new Error(emailErr);
   }
   const existingUser = await Userwebapp.findOne({ email });
 
@@ -554,7 +690,7 @@ const sendSignupVerificationCode = asyncHandler(async (req, res) => {
     }
   }
   const otp = Math.floor(100000 + Math.random() * 900000).toString();
-  const otpExpiration = Date.now() + 10 * 60 * 1000;
+  const otpExpiration = Date.now() + 5 * 60 * 1000; // 5 minutes
   await EmailVerification.findOneAndUpdate(
     { email },
     { otp, otpExpiration },
@@ -661,7 +797,7 @@ const googleAuthUser = asyncHandler(async (req, res) => {
     status: "Pending",
     adminApproved: false,
     isActive: false,
-    schoolAdmin: false,   // ✅ IMPORTANT DEFAULT
+    schoolAdmin: null,   // ✅ ObjectId field: null for individual/B2C users
   });
 
   const token = generateToken(user._id);
@@ -672,7 +808,7 @@ const googleAuthUser = asyncHandler(async (req, res) => {
     name,
     profileImage: picture,
     isGoogleUser: true,
-    schoolAdmin: false,   // ✅ IMPORTANT
+    schoolAdmin: null,
     schoolName: null,
     school: null,
     needsProfileCompletion: true,
@@ -745,14 +881,14 @@ const verifyOTPOnly = asyncHandler(async (req, res) => {
 const sendAgeGateVerificationCode = asyncHandler(async (req, res) => {
   const { email } = req.body;
 
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!emailRegex.test(email)) {
+  const emailErr = validateEmailBackend(email);
+  if (emailErr) {
     res.status(400);
-    throw new Error("Invalid email format.");
+    throw new Error(emailErr);
   }
 
   const otp = Math.floor(100000 + Math.random() * 900000).toString();
-  const otpExpiration = Date.now() + 10 * 60 * 1000; // 10 minutes
+  const otpExpiration = Date.now() + 5 * 60 * 1000; // 5 minutes
 
   await EmailVerification.findOneAndUpdate(
     { email },
@@ -772,9 +908,96 @@ const sendAgeGateVerificationCode = asyncHandler(async (req, res) => {
 
 
 
+// ✅ B2B Student Authentication Controller
+const authB2BUser = asyncHandler(async (req, res) => {
+  const { email, password } = req.body;
+
+  if (!email || !password) {
+    res.status(400);
+    throw new Error("Email and password are required.");
+  }
+
+  const user = await Userwebapp.findOne({ email });
+  if (!user) {
+    res.status(400);
+    throw new Error("Invalid student credentials or account not found.");
+  }
+
+  // 🚫 Block manual login for Google users
+  if (user.isGoogleUser) {
+    res.status(400);
+    throw new Error("This account was created using Google. Please sign in with Google.");
+  }
+
+  const isMatch = await user.matchPassword(password);
+  if (!isMatch) {
+    res.status(400);
+    throw new Error("Invalid email or password.");
+  }
+
+  // 🏫 Check B2B affiliation
+  if (!user.schoolAdmin) {
+    res.status(403);
+    throw new Error("This account is registered as an individual student (B2C). Please use the standard Student Login portal.");
+  }
+
+  // School-admin restriction / activation
+  if (!user.isActive) {
+    res.status(403);
+    throw new Error("Your institutional account has not been activated or has been restricted by your administrator.");
+  }
+
+  await expireIfNeeded(user);
+
+  const token = generateToken(user._id);
+
+  const session = await LoginSession.create({
+    studentId: user._id,
+    schoolAdmin: user.schoolAdmin,
+    loginAt: new Date(),
+  });
+
+  let resolvedSchool = user.schoolName || user.school || null;
+  if (!resolvedSchool && user.schoolAdmin) {
+    try {
+      const schoolAdminDoc = await SchoolAdmin.findById(user.schoolAdmin).select("schoolName").lean();
+      if (schoolAdminDoc?.schoolName) {
+        resolvedSchool = schoolAdminDoc.schoolName;
+        await Userwebapp.findByIdAndUpdate(user._id, {
+          schoolName: resolvedSchool,
+          school: resolvedSchool,
+        });
+      }
+    } catch (err) {
+      console.error("Could not resolve schoolName from schoolAdmin:", err.message);
+    }
+  }
+
+  res.json({
+    _id: user._id,
+    name: user.name,
+    email: user.email,
+    profileImage: user.profileImage,
+    isPremium: user.isPremium,
+    planType: user.planType,
+    premiumExpiration: user.premiumExpiration,
+    token,
+    sessionId: session._id,
+    schoolAdmin: user.schoolAdmin,
+    schoolAdminId: user.schoolAdmin,
+    schoolName: resolvedSchool,
+    school: resolvedSchool,
+    adminApproved: user.adminApproved,
+    status: user.status,
+    isFullyApproved: user.status === "Approved" && user.adminApproved,
+    isB2B: true,
+  });
+});
+
 module.exports = {
   registerUser,
   authUser,
+  authB2BUser,
   updateUserProfile,
   getAllUsers,
   approveUser,
